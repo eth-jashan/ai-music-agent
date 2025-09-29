@@ -1,0 +1,167 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Users table
+model User {
+  id         String   @id @default(uuid())
+  email      String   @unique
+  name       String?
+  avatarUrl  String?  @map("avatar_url")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  connections     Connection[]
+  musicProfiles   MusicProfile[]
+  conversations   Conversation[]
+  playlists       Playlist[]
+  accounts        Account[]
+  sessions        Session[]
+
+  @@index([email])
+  @@index([createdAt])
+  @@map("users")
+}
+
+// NextAuth.js required tables
+model Account {
+  id                String  @id @default(uuid())
+  userId            String  @map("user_id")
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verificationtokens")
+}
+
+// Music service connections
+model Connection {
+  id            String    @id @default(uuid())
+  userId        String    @map("user_id")
+  service       String    // 'spotify' | 'soundcloud'
+  accessToken   String?   @map("access_token") @db.Text
+  refreshToken  String?   @map("refresh_token") @db.Text
+  expiresAt     DateTime? @map("expires_at")
+  serviceUserId String?   @map("service_user_id")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, service])
+  @@index([userId])
+  @@index([service])
+  @@map("connections")
+}
+
+// User music profile
+model MusicProfile {
+  id            String   @id @default(uuid())
+  userId        String   @map("user_id")
+  topArtists    Json?    @map("top_artists")
+  topTracks     Json?    @map("top_tracks")
+  topGenres     Json?    @map("top_genres")
+  audioFeatures Json?    @map("audio_features") // avg energy, danceability, etc
+  lastAnalyzed  DateTime @map("last_analyzed")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([lastAnalyzed])
+  @@map("music_profiles")
+}
+
+// Chat conversations
+model Conversation {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  title     String?
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@map("conversations")
+}
+
+// Chat messages
+model Message {
+  id             String   @id @default(uuid())
+  conversationId String   @map("conversation_id")
+  role           String   // 'user' | 'assistant'
+  content        String   @db.Text
+  playlistData   Json?    @map("playlist_data") // generated playlist if applicable
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  playlists    Playlist[]
+
+  @@index([conversationId])
+  @@index([createdAt])
+  @@index([role])
+  @@map("messages")
+}
+
+// Generated playlists
+model Playlist {
+  id            String   @id @default(uuid())
+  userId        String   @map("user_id")
+  messageId     String?  @map("message_id")
+  name          String
+  description   String?  @db.Text
+  tracks        Json     // array of track objects
+  totalDuration Int      @map("total_duration") // in seconds
+  prompt        String?  @db.Text
+  exportedTo    String[] @map("exported_to") // ['spotify', 'soundcloud']
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  message Message? @relation(fields: [messageId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([messageId])
+  @@map("playlists")
+}
